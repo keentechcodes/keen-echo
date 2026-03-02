@@ -18,14 +18,14 @@ Built by [Keenan](https://github.com/keentechcodes) as a way to clone his own vo
 ## The Pipeline
 
 ```
-  PREPARE               TRAIN                DEPLOY              CHAT
-  ┌─────────┐          ┌─────────┐          ┌─────────┐        ┌─────────┐
-  │ Your    │          │ RunPod  │          │  GCP    │        │  Web    │
-  │ notes   │ ──────▶  │ ~30min  │ ──────▶  │ Cloud   │ ────▶  │  UI     │
-  │ → JSONL │          │ ~$0.30  │          │  Run    │        │  Free   │
-  └─────────┘          └─────────┘          └─────────┘        └─────────┘
-  refine + validate    Unsloth + Qwen3-8B   vLLM + L4 GPU      index.html
-                       LoRA fine-tuning      or local Ollama    (zero deps)
+  PREPARE               TRAIN                DEPLOY
+  ┌─────────┐          ┌─────────┐          ┌─────────┐
+  │ Your    │          │ RunPod  │          │  GCP    │
+  │ notes   │ ──────▶  │ ~30min  │ ──────▶  │ Cloud   │
+  │ → JSONL │          │ ~$0.30  │          │  Run    │
+  └─────────┘          └─────────┘          └─────────┘
+  refine + validate    Unsloth + Qwen3-8B   vLLM + L4 GPU
+                       LoRA fine-tuning      or local Ollama
 ```
 
 ## Project Structure
@@ -35,7 +35,6 @@ keen-echo/
 ├── train.py                     # Main training script (RunPod GPU)
 ├── export_gguf.py               # GGUF export helper (for Ollama)
 ├── deploy_gcp.sh                # GCP Cloud Run deployment
-├── index.html                   # Browser chat UI (zero dependencies)
 ├── refine_mannerisms.py         # Style cleaning for training data
 ├── validate_dataset.py          # Dataset quality checks
 ├── .env.example                 # Environment config template
@@ -107,13 +106,13 @@ Detailed guide: [docs/03-local-ollama.md](docs/03-local-ollama.md)
 
 ### 4. Chat
 
-Open `index.html` in your browser, enter your API endpoint, and start chatting.
+Once deployed, your model serves an OpenAI-compatible API. Use any compatible client (curl, Open WebUI, etc.) to chat with it. See the deployment guides for testing examples.
 
 ## Customization
 
 ### Persona & System Prompt
 
-Edit the `SYSTEM_PROMPT` in `train.py` to describe the writing style you want the model to learn. The same prompt should be used in `index.html` for inference.
+Edit the `SYSTEM_PROMPT` in `train.py` to describe the writing style you want the model to learn. Use the same prompt at inference time.
 
 ### Model Size
 

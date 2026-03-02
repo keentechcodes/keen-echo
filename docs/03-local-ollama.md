@@ -138,15 +138,12 @@ curl http://localhost:11434/api/chat -d '{
 }'
 ```
 
-## Step 6: Connect to Chat UI
+## Step 6: Connect a Client
 
-The included `index.html` can also work with Ollama:
+Ollama serves a local API at `http://localhost:11434`. You can use any compatible client:
 
-1. Open `index.html`
-2. Set endpoint to: `http://localhost:11434`
-3. Note: You may need to modify the API call format slightly (Ollama uses a different endpoint path than OpenAI-compatible servers)
-
-Or use **Open WebUI** for a better local experience:
+- **Ollama CLI** (built-in, see examples above)
+- **[Open WebUI](https://github.com/open-webui/open-webui)** (recommended for a full chat experience):
 
 ```bash
 docker run -d -p 3000:8080 \

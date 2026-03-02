@@ -48,3 +48,6 @@ Thumbs.db
 
 # Claude Code
 .claude/
+
+# Chat UI (not yet deployed, kept locally)
+index.html

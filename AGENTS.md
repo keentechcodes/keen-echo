@@ -8,8 +8,7 @@ Obsidian Daily Notes) using LoRA via the Unsloth framework, then deploys via vLL
 GCP Cloud Run or locally via Ollama.
 
 This is a data/ML pipeline project, not a traditional software library. It consists
-of standalone Python scripts, JSONL datasets, Bash deployment scripts, and a
-single-file HTML chat UI.
+of standalone Python scripts, JSONL datasets, and Bash deployment scripts.
 
 ## Repository Layout
 
@@ -18,7 +17,6 @@ keen-echo/
   train.py                       # Main training script (runs on RunPod GPU)
   export_gguf.py                 # Standalone GGUF export helper (CLI args)
   deploy_gcp.sh                  # GCP Cloud Run deployment (bash)
-  index.html                     # Browser chat UI (HTML/CSS/JS, zero dependencies)
   refine_mannerisms.py           # Text cleaning: lowercasing, period removal, style fixes
   validate_dataset.py            # Dataset quality checks (JSON validity, duplicates, stats)
   .env.example                   # Environment config template (GCP project, bucket, etc.)
@@ -45,6 +43,7 @@ These stay on disk but are excluded from version control:
 - `test_prompt.md` / `test_prompt_refined.md` — Personal test prompts
 - `validation_report.md` — Multi-agent validation report (kept locally)
 - `chat_artifacts/` — Legacy directory (contents moved to root + docs/)
+- `index.html` — Browser chat UI (not yet deployed, kept locally)
 - `training_setup(gemini3gen)/` — Earlier experiment (superseded)
 - `*.gguf` and model output directories
 
@@ -173,12 +172,6 @@ from datetime import datetime
 
 - Use `set -e` for fail-fast behavior.
 - Use `set -o pipefail` when piping commands.
-
-### HTML/JS (Chat UI)
-
-- Single-file architecture: all HTML, CSS, and JS in one `index.html`.
-- Zero external dependencies.
-- Dark theme styling.
 
 ## Key Technical Decisions
 

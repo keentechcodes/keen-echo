@@ -301,18 +301,13 @@ curl $SERVICE_URL/v1/chat/completions \
 
 **Note:** First request after idle will take 30-60 seconds (cold start).
 
-## Step 7: Connect the Chat UI
+## Step 7: Connect a Client
 
-1. Open `index.html` in your browser
-2. Enter your service URL in the "API Endpoint" field
-3. Start chatting!
+Your deployment serves an OpenAI-compatible API. You can use any compatible client:
 
-Or host it:
-```bash
-# Simple local server
-python -m http.server 8080
-# Open http://localhost:8080
-```
+- **curl** (see examples above)
+- **[Open WebUI](https://github.com/open-webui/open-webui)** (recommended for a full chat experience)
+- **Python** via the `openai` package with `base_url` set to your service URL
 
 ## Cost Management
 
