@@ -2,7 +2,7 @@
 
 A fine-tuning pipeline that creates a "digital twin" LLM mimicking your writing style. Train on your personal notes, deploy anywhere.
 
-Built by [Keenan](https://github.com/keenora) as a way to clone his own voice from Obsidian Daily Notes — but designed so anyone can fork it and train their own.
+Built by [Keenan](https://github.com/keentechcodes) as a way to clone his own voice from Obsidian Daily Notes but designed so anyone can fork it and train their own. The trained model is available on [HuggingFace](https://huggingface.co/keenanthekeen/keenan-qwen3-8b).
 
 ## Overview
 
@@ -162,7 +162,7 @@ Typical monthly cost for light usage: $1-5.
 - **Base model:** Qwen3-8B with Unsloth Dynamic 4-bit quantization
 - **Fine-tuning:** LoRA (r=16, alpha=16), targeting all attention + MLP projections
 - **Training:** 3 epochs, batch_size=2, gradient_accumulation=4, lr=2e-4, adamw_8bit
-- **Thinking mode:** Disabled (`enable_thinking=False`) — required for persona fine-tuning
+- **Thinking mode:** Disabled (`enable_thinking=False`) (required for persona fine-tuning)
 - **GGUF export:** Q4_K_M quantization (~4.5GB)
 - **Chat template:** ChatML (`<|im_start|>/<|im_end|>`)
 - **Inference params:** temp=0.7, top_p=0.8, top_k=20 (Qwen3 non-thinking recommendations)
