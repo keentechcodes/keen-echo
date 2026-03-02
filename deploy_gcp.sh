@@ -5,10 +5,14 @@
 #
 # Deploys a fine-tuned LLM to GCP Cloud Run with GPU (vLLM).
 #
+# Supports two model sources (configured in .env):
+#   A) HuggingFace — vLLM pulls the model directly (simpler)
+#   B) GCS bucket  — model files mounted from Cloud Storage
+#
 # Prerequisites:
 #   1. Google Cloud account with billing enabled
 #   2. gcloud CLI installed and authenticated
-#   3. Your fine-tuned model uploaded to GCS
+#   3. Model on HuggingFace OR uploaded to GCS
 #
 # Usage:
 #   chmod +x deploy_gcp.sh
@@ -33,10 +37,6 @@ fi
 
 source "$SCRIPT_DIR/.env"
 
-PROJECT_ID="$GCP_PROJECT_ID"
-REGION="$GCP_REGION"
-BUCKET_NAME="$GCS_BUCKET_NAME"
-
 # ============================================================
 # COLORS FOR OUTPUT
 # ============================================================
@@ -46,6 +46,24 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+PROJECT_ID="$GCP_PROJECT_ID"
+REGION="$GCP_REGION"
+
+# Determine model source: HuggingFace or GCS
+if [ -n "$HF_MODEL_ID" ]; then
+    MODEL_SOURCE="huggingface"
+    echo -e "${BLUE}Model source: HuggingFace ($HF_MODEL_ID)${NC}"
+else
+    MODEL_SOURCE="gcs"
+    BUCKET_NAME="$GCS_BUCKET_NAME"
+    if [ -z "$BUCKET_NAME" ] || [ -z "$MODEL_PATH" ]; then
+        echo "Error: No model source configured."
+        echo "Set HF_MODEL_ID for HuggingFace, or GCS_BUCKET_NAME + MODEL_PATH for GCS."
+        exit 1
+    fi
+    echo -e "${BLUE}Model source: GCS (gs://$BUCKET_NAME/$MODEL_PATH)${NC}"
+fi
 
 echo -e "${BLUE}"
 echo "============================================================"
@@ -78,34 +96,40 @@ gcloud services enable \
 echo -e "${GREEN}✓ APIs enabled${NC}"
 
 # ============================================================
-# STEP 3: Create GCS bucket (if not exists)
+# STEP 3: Set up model source (GCS bucket OR HuggingFace)
 # ============================================================
 
-echo -e "${YELLOW}[3/7] Creating Cloud Storage bucket...${NC}"
+if [ "$MODEL_SOURCE" = "gcs" ]; then
+    echo -e "${YELLOW}[3/7] Setting up GCS bucket...${NC}"
 
-if gsutil ls -b gs://$BUCKET_NAME 2>/dev/null; then
-    echo -e "${GREEN}✓ Bucket already exists${NC}"
+    if gsutil ls -b gs://$BUCKET_NAME 2>/dev/null; then
+        echo -e "${GREEN}✓ Bucket already exists${NC}"
+    else
+        gsutil mb -l $REGION gs://$BUCKET_NAME
+        echo -e "${GREEN}✓ Bucket created: gs://$BUCKET_NAME${NC}"
+    fi
+
+    # ============================================================
+    # STEP 4: Verify model upload (GCS only)
+    # ============================================================
+
+    echo -e "${YELLOW}[4/7] Checking model upload...${NC}"
+
+    if gsutil ls gs://$BUCKET_NAME/$MODEL_PATH/ 2>/dev/null; then
+        echo -e "${GREEN}✓ Model already uploaded${NC}"
+    else
+        echo -e "${YELLOW}Model not found in bucket.${NC}"
+        echo -e "${YELLOW}Please upload your model first:${NC}"
+        echo ""
+        echo "  gsutil -m cp -r /path/to/your-model-merged gs://$BUCKET_NAME/$MODEL_PATH/"
+        echo ""
+        echo -e "${RED}Exiting. Run this script again after uploading.${NC}"
+        exit 1
+    fi
 else
-    gsutil mb -l $REGION gs://$BUCKET_NAME
-    echo -e "${GREEN}✓ Bucket created: gs://$BUCKET_NAME${NC}"
-fi
-
-# ============================================================
-# STEP 4: Upload model (if not already uploaded)
-# ============================================================
-
-echo -e "${YELLOW}[4/7] Checking model upload...${NC}"
-
-if gsutil ls gs://$BUCKET_NAME/$MODEL_PATH/ 2>/dev/null; then
-    echo -e "${GREEN}✓ Model already uploaded${NC}"
-else
-    echo -e "${YELLOW}Model not found in bucket.${NC}"
-    echo -e "${YELLOW}Please upload your model first:${NC}"
-    echo ""
-    echo "  gsutil -m cp -r /path/to/your-model-merged gs://$BUCKET_NAME/$MODEL_PATH/"
-    echo ""
-    echo -e "${RED}Exiting. Run this script again after uploading.${NC}"
-    exit 1
+    echo -e "${YELLOW}[3/7] Using HuggingFace model — no bucket needed${NC}"
+    echo -e "${GREEN}✓ vLLM will pull $HF_MODEL_ID at startup${NC}"
+    echo -e "${YELLOW}[4/7] Skipping model upload (HuggingFace mode)${NC}"
 fi
 
 # ============================================================
@@ -125,8 +149,10 @@ else
     echo -e "${GREEN}✓ Service account created${NC}"
 fi
 
-# Grant GCS access
-gsutil iam ch serviceAccount:$SA_EMAIL:objectViewer gs://$BUCKET_NAME
+# Grant GCS access (only needed for GCS mode)
+if [ "$MODEL_SOURCE" = "gcs" ]; then
+    gsutil iam ch serviceAccount:$SA_EMAIL:objectViewer gs://$BUCKET_NAME
+fi
 
 echo -e "${GREEN}✓ Service account configured${NC}"
 
@@ -140,25 +166,46 @@ echo -e "${YELLOW}[6/7] Deploying to Cloud Run...${NC}"
 # Check for latest tags: https://console.cloud.google.com/artifacts/docker/vertex-ai/us/vertex-vision-model-garden-dockers
 VLLM_IMAGE="us-docker.pkg.dev/vertex-ai/vertex-vision-model-garden-dockers/pytorch-vllm-serve:20250312_0916_RC01"
 
-gcloud run deploy $SERVICE_NAME \
-    --image $VLLM_IMAGE \
-    --region $REGION \
-    --port 8000 \
-    --cpu 8 \
-    --memory 32Gi \
-    --gpu 1 \
-    --gpu-type nvidia-l4 \
-    --max-instances 1 \
-    --min-instances 0 \
-    --timeout 300 \
-    --service-account $SA_EMAIL \
-    --set-env-vars "MODEL_ID=/model,HF_HUB_OFFLINE=1" \
-    --add-volume name=model-volume,type=cloud-storage,bucket=$BUCKET_NAME \
-    --add-volume-mount volume=model-volume,mount-path=/model \
-    --command python3 \
-    --args="-m,vllm.entrypoints.openai.api_server,--model,/model/$MODEL_PATH,--tensor-parallel-size,1,--max-model-len,2048,--trust-remote-code" \
-    --no-gpu-zonal-redundancy \
-    --allow-unauthenticated
+if [ "$MODEL_SOURCE" = "huggingface" ]; then
+    # HuggingFace mode: vLLM pulls the model directly at startup
+    gcloud run deploy $SERVICE_NAME \
+        --image $VLLM_IMAGE \
+        --region $REGION \
+        --port 8000 \
+        --cpu 8 \
+        --memory 32Gi \
+        --gpu 1 \
+        --gpu-type nvidia-l4 \
+        --max-instances 1 \
+        --min-instances 0 \
+        --timeout 300 \
+        --service-account $SA_EMAIL \
+        --command python3 \
+        --args="-m,vllm.entrypoints.openai.api_server,--model,$HF_MODEL_ID,--tensor-parallel-size,1,--max-model-len,2048,--trust-remote-code" \
+        --no-gpu-zonal-redundancy \
+        --allow-unauthenticated
+else
+    # GCS mode: mount bucket and serve from local path
+    gcloud run deploy $SERVICE_NAME \
+        --image $VLLM_IMAGE \
+        --region $REGION \
+        --port 8000 \
+        --cpu 8 \
+        --memory 32Gi \
+        --gpu 1 \
+        --gpu-type nvidia-l4 \
+        --max-instances 1 \
+        --min-instances 0 \
+        --timeout 300 \
+        --service-account $SA_EMAIL \
+        --set-env-vars "MODEL_ID=/model,HF_HUB_OFFLINE=1" \
+        --add-volume name=model-volume,type=cloud-storage,bucket=$BUCKET_NAME \
+        --add-volume-mount volume=model-volume,mount-path=/model \
+        --command python3 \
+        --args="-m,vllm.entrypoints.openai.api_server,--model,/model/$MODEL_PATH,--tensor-parallel-size,1,--max-model-len,2048,--trust-remote-code" \
+        --no-gpu-zonal-redundancy \
+        --allow-unauthenticated
+fi
 
 echo -e "${GREEN}✓ Deployed to Cloud Run${NC}"
 
@@ -182,10 +229,18 @@ echo -e "Service URL: ${BLUE}$SERVICE_URL${NC}"
 echo ""
 echo "Test your deployment:"
 echo ""
+
+# Model name in API requests depends on source
+if [ "$MODEL_SOURCE" = "huggingface" ]; then
+    API_MODEL_NAME="$HF_MODEL_ID"
+else
+    API_MODEL_NAME="$MODEL_PATH"
+fi
+
 echo "curl $SERVICE_URL/v1/chat/completions \\"
 echo "  -H 'Content-Type: application/json' \\"
 echo "  -d '{"
-echo '    "model": "'$MODEL_PATH'",'
+echo '    "model": "'$API_MODEL_NAME'",'
 echo '    "messages": ['
 echo '      {"role": "system", "content": "You are a digital twin. Respond in the persona's style."},'
 echo '      {"role": "user", "content": "thoughts on learning?"}'
@@ -199,6 +254,9 @@ echo "IMPORTANT NOTES:"
 echo "============================================================"
 echo ""
 echo "1. Cold start takes 30-60 seconds (model loading)"
+if [ "$MODEL_SOURCE" = "huggingface" ]; then
+    echo "   (First cold start is longer — model downloads from HuggingFace)"
+fi
 echo "2. After that, responses are fast (~1-2 seconds)"
 echo "3. Service scales to 0 when idle (no cost)"
 echo "4. Cost when active: ~\$0.50-0.80/hour"
