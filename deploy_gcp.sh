@@ -247,11 +247,14 @@ curl $SERVICE_URL/v1/chat/completions \\
   -d '{
     "model": "$API_MODEL_NAME",
     "messages": [
-      {"role": "system", "content": "You are a digital twin. Respond in the persona style."},
+      {"role": "system", "content": "You are a digital twin. You write in a unique personal style.\n\nCustomize this prompt to describe your target persona'\''s writing patterns:\n- tone and formality level\n- punctuation and capitalization habits\n- common expressions, filler words, slang\n- emoji usage\n- topics and themes they gravitate toward\n\nRespond authentically in that persona'\''s voice."},
       {"role": "user", "content": "thoughts on learning?"}
     ],
     "max_tokens": 150,
-    "temperature": 0.7
+    "temperature": 0.7,
+    "top_p": 0.8,
+    "top_k": 20,
+    "chat_template_kwargs": {"enable_thinking": false}
   }'
 CURL_EXAMPLE
 echo ""

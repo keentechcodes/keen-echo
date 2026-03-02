@@ -291,7 +291,7 @@ curl $SERVICE_URL/v1/chat/completions \
     "messages": [
       {
         "role": "system",
-        "content": "Your system prompt here. Customize this to match your persona."
+        "content": "Your system prompt here. Must match the SYSTEM_PROMPT used during training."
       },
       {
         "role": "user",
@@ -301,9 +301,14 @@ curl $SERVICE_URL/v1/chat/completions \
     "max_tokens": 150,
     "temperature": 0.7,
     "top_p": 0.8,
-    "top_k": 20
+    "top_k": 20,
+    "chat_template_kwargs": {"enable_thinking": false}
   }'
 ```
+
+> **Important:** The `chat_template_kwargs` field disables Qwen3's thinking mode (no `<think>` blocks
+> in responses). This is required for persona fine-tuned models where thinking was disabled during
+> training. Without it, responses will start with empty `<think></think>` tags.
 
 > **Note:** Qwen3 recommended params for non-thinking mode: temp=0.7, top_p=0.8, top_k=20
 
