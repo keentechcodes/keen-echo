@@ -1,0 +1,50 @@
+# Personal data (journal entries, training pairs)
+keenan_corpus.txt
+extraction_debug.jsonl
+extraction_stats.json
+training_pairs.jsonl
+augmented_pairs.jsonl
+refined_pairs.jsonl
+test_prompt.md
+test_prompt_refined.md
+validation_report.md
+
+# Earlier experiments
+training_setup(gemini3gen)/
+
+# Legacy directory (contents moved to root)
+chat_artifacts/
+
+# Model outputs
+keenan-qwen3-8b/
+keenan-qwen3-8b-merged/
+keenan-qwen3-8b-gguf/
+*.gguf
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Environment
+.env
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code
+.claude/
