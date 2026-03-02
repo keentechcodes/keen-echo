@@ -11,6 +11,7 @@ Built by [Keenan](https://github.com/keenora) as a way to clone his own voice fr
 | **Model** | Qwen3-8B (LoRA fine-tuned via Unsloth) |
 | **Training Data** | Your personal writing (Obsidian notes, journals, etc.) |
 | **Deployment** | GCP Cloud Run (serverless GPU) or local via Ollama |
+| **Model Hosting** | HuggingFace (recommended) or GCS bucket |
 | **Training Cost** | ~$0.25-0.40 one-time (RunPod) |
 | **Running Cost** | $0 idle / ~$0.50/hr active (cloud), $0 (local) |
 
@@ -82,9 +83,17 @@ Detailed guide: [docs/01-runpod-training.md](docs/01-runpod-training.md)
 
 ### 3. Deploy
 
+After training, upload your model to [HuggingFace](https://huggingface.co) for easy access:
+
+```bash
+pip install huggingface_hub
+huggingface-cli login
+huggingface-cli upload username/your-model ./your-model-merged/
+```
+
 **Option A: GCP Cloud Run** (serverless, scales to zero)
 ```bash
-cp .env.example .env   # fill in your GCP project, bucket, etc.
+cp .env.example .env   # set HF_MODEL_ID or GCS bucket config
 bash deploy_gcp.sh
 ```
 Detailed guide: [docs/02-gcp-deployment.md](docs/02-gcp-deployment.md)

@@ -24,14 +24,27 @@ The deployment script reads configuration from a `.env` file. Create one from th
 cp .env.example .env
 ```
 
-Then edit `.env` with your values:
+Then edit `.env`. You need to choose a model source — HuggingFace or GCS:
+
+**Option A: HuggingFace (simpler)**
 ```bash
 GCP_PROJECT_ID="your-gcp-project-id"
 GCP_REGION="us-central1"
-GCS_BUCKET_NAME="your-model-bucket"
 SERVICE_NAME="your-bot"
+HF_MODEL_ID="username/your-model"   # vLLM pulls directly from HuggingFace
+```
+
+**Option B: GCS bucket (self-hosted)**
+```bash
+GCP_PROJECT_ID="your-gcp-project-id"
+GCP_REGION="us-central1"
+SERVICE_NAME="your-bot"
+HF_MODEL_ID=""                       # Leave empty to use GCS
+GCS_BUCKET_NAME="your-model-bucket"
 MODEL_PATH="my-model-merged"
 ```
+
+HuggingFace is simpler — no bucket setup, no upload step. GCS gives you more control and avoids downloading the model on every cold start.
 
 ## Step 1: Initial Setup
 
@@ -75,9 +88,35 @@ gcloud services enable \
     compute.googleapis.com
 ```
 
-## Step 2: Upload Model to Cloud Storage
+## Step 2: Make Your Model Available
 
-### Create a bucket
+Choose the option matching your `.env` configuration.
+
+### Option A: HuggingFace
+
+If you set `HF_MODEL_ID` in your `.env`, your model is already available. vLLM will
+pull it directly at startup. Skip to Step 3.
+
+To upload a model to HuggingFace (if you haven't already):
+
+```bash
+pip install huggingface_hub
+
+# Login (get token from https://huggingface.co/settings/tokens)
+huggingface-cli login
+
+# Upload your merged model directory
+huggingface-cli upload username/your-model ./your-model-merged/
+```
+
+> **Note:** First cold start with HuggingFace will be slower (model downloads ~16GB).
+> Subsequent cold starts use the cached download.
+
+### Option B: Google Cloud Storage
+
+If you left `HF_MODEL_ID` empty and set `GCS_BUCKET_NAME` + `MODEL_PATH`:
+
+#### Create a bucket
 ```bash
 BUCKET_NAME="your-model-bucket-$(date +%s)"
 REGION="us-central1"
@@ -85,7 +124,7 @@ REGION="us-central1"
 gsutil mb -l $REGION gs://$BUCKET_NAME
 ```
 
-### Upload your model
+#### Upload your model
 
 From your local machine (after downloading from RunPod):
 ```bash
@@ -116,6 +155,8 @@ gs://your-model-bucket/your-qwen3-8b-merged/
 
 ## Step 3: Create Service Account
 
+The deploy script handles this automatically, but if running manually:
+
 ```bash
 SA_NAME="model-service-sa"
 PROJECT_ID=$(gcloud config get-value project)
@@ -124,13 +165,51 @@ PROJECT_ID=$(gcloud config get-value project)
 gcloud iam service-accounts create $SA_NAME \
     --display-name="Model Service Account"
 
-# Grant access to the bucket
+# Grant access to the bucket (GCS mode only)
 gsutil iam ch \
     serviceAccount:$SA_NAME@$PROJECT_ID.iam.gserviceaccount.com:objectViewer \
     gs://$BUCKET_NAME
 ```
 
 ## Step 4: Deploy to Cloud Run
+
+The easiest way is to run the deploy script:
+
+```bash
+bash deploy_gcp.sh
+```
+
+The script detects your model source from `.env` and runs the right `gcloud run deploy` command. If you prefer to run it manually:
+
+### HuggingFace mode
+
+```bash
+SERVICE_NAME="your-model-service"
+REGION="us-central1"
+HF_MODEL_ID="username/your-model"  # Customize: your HuggingFace model ID
+
+# Google's pre-built vLLM image (Vertex AI)
+VLLM_IMAGE="us-docker.pkg.dev/vertex-ai/vertex-vision-model-garden-dockers/pytorch-vllm-serve:20250312_0916_RC01"
+
+gcloud run deploy $SERVICE_NAME \
+    --image $VLLM_IMAGE \
+    --region $REGION \
+    --port 8000 \
+    --cpu 8 \
+    --memory 32Gi \
+    --gpu 1 \
+    --gpu-type nvidia-l4 \
+    --max-instances 1 \
+    --min-instances 0 \
+    --timeout 300 \
+    --service-account $SA_NAME@$PROJECT_ID.iam.gserviceaccount.com \
+    --command python3 \
+    --args="-m,vllm.entrypoints.openai.api_server,--model,$HF_MODEL_ID,--tensor-parallel-size,1,--max-model-len,2048,--trust-remote-code" \
+    --no-gpu-zonal-redundancy \
+    --allow-unauthenticated
+```
+
+### GCS mode
 
 ```bash
 SERVICE_NAME="your-model-service"
@@ -164,7 +243,8 @@ gcloud run deploy $SERVICE_NAME \
 
 ### What this does:
 - Deploys vLLM as a serverless container
-- Mounts your GCS bucket at `/model`
+- **HuggingFace mode:** vLLM downloads the model from HuggingFace at startup
+- **GCS mode:** Mounts your GCS bucket at `/model` and serves from there
 - Starts an OpenAI-compatible API server
 - Scales to 0 when idle (no cost)
 - Allows unauthenticated access (for testing)
@@ -193,6 +273,9 @@ curl $SERVICE_URL/v1/models
 
 ### Chat completion
 ```bash
+# The "model" value depends on your source:
+#   HuggingFace: use your HF_MODEL_ID (e.g., "username/your-model")
+#   GCS: use your MODEL_PATH (e.g., "your-qwen3-8b-merged")
 curl $SERVICE_URL/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
@@ -284,6 +367,11 @@ gsutil rm -r gs://$BUCKET_NAME
 # Check logs
 gcloud run services logs read $SERVICE_NAME --region $REGION
 
-# Verify model files exist
+# Verify model files exist (GCS mode)
 gsutil ls gs://$BUCKET_NAME/$MODEL_PATH/
 ```
+
+### HuggingFace download slow or failing
+- First cold start downloads the full model (~16GB) — this takes several minutes
+- Make sure the HuggingFace repo is public, or set `HF_TOKEN` as an env var in the deploy command
+- Check logs for download progress: `gcloud run services logs read $SERVICE_NAME --region $REGION`

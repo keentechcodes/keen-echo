@@ -33,6 +33,23 @@ Download from [ollama.com/download](https://ollama.com/download)
 
 ## Step 2: Get the GGUF File
 
+You need the quantized `.gguf` file from training. There are several ways to get it.
+
+### From HuggingFace (easiest)
+
+If your model is hosted on HuggingFace with a GGUF file:
+
+```bash
+pip install huggingface_hub
+
+# Download just the GGUF file (not the full model)
+# Customize: replace with your HuggingFace model ID and GGUF filename
+huggingface-cli download username/your-model your-model-Q4_K_M.gguf \
+    --local-dir ~/models/my-model
+```
+
+### From RunPod (after training)
+
 After training on RunPod, you'll have a GGUF directory:
 ```
 your-model-gguf/
@@ -41,11 +58,11 @@ your-model-gguf/
 
 Download this file to your local machine.
 
-### Using RunPod File Manager
+**Using RunPod File Manager:**
 1. Navigate to your GGUF output directory in the RunPod file browser
-2. Right-click the `.gguf` file → Download
+2. Right-click the `.gguf` file -> Download
 
-### Using SCP (if SSH enabled)
+**Using SCP (if SSH enabled):**
 ```bash
 scp root@your-pod-ip:/workspace/your-model-gguf/*.gguf ~/models/
 ```
