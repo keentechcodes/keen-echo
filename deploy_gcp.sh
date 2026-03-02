@@ -162,12 +162,14 @@ echo -e "${GREEN}✓ Service account configured${NC}"
 
 echo -e "${YELLOW}[6/7] Deploying to Cloud Run...${NC}"
 
-# Using Google's pre-built vLLM container
-# Check for latest tags: https://console.cloud.google.com/artifacts/docker/vertex-ai/us/vertex-vision-model-garden-dockers
-VLLM_IMAGE="us-docker.pkg.dev/vertex-ai/vertex-vision-model-garden-dockers/pytorch-vllm-serve:20250312_0916_RC01"
+# Official vLLM Docker Hub image (supports Qwen3 and other recent architectures)
+# Check for latest tags: https://hub.docker.com/r/vllm/vllm-openai/tags
+VLLM_IMAGE="docker.io/vllm/vllm-openai:v0.16.0"
 
 if [ "$MODEL_SOURCE" = "huggingface" ]; then
     # HuggingFace mode: vLLM pulls the model directly at startup
+    # Note: First deploy downloads ~16GB from HF, needs a long startup probe timeout.
+    # Subsequent cold starts use cached layers and are faster.
     gcloud run deploy $SERVICE_NAME \
         --image $VLLM_IMAGE \
         --region $REGION \
@@ -179,9 +181,11 @@ if [ "$MODEL_SOURCE" = "huggingface" ]; then
         --max-instances 1 \
         --min-instances 0 \
         --timeout 300 \
+        --cpu-boost \
+        --startup-probe="httpGet.path=/health,httpGet.port=8000,initialDelaySeconds=0,timeoutSeconds=10,periodSeconds=15,failureThreshold=40" \
         --service-account $SA_EMAIL \
         --command python3 \
-        --args="-m,vllm.entrypoints.openai.api_server,--model,$HF_MODEL_ID,--tensor-parallel-size,1,--max-model-len,2048,--trust-remote-code" \
+        --args="-m,vllm.entrypoints.openai.api_server,--model,$HF_MODEL_ID,--tensor-parallel-size,1,--max-model-len,2048,--max-num-seqs,32,--gpu-memory-utilization,0.85,--trust-remote-code" \
         --no-gpu-zonal-redundancy \
         --allow-unauthenticated
 else
@@ -237,17 +241,19 @@ else
     API_MODEL_NAME="$MODEL_PATH"
 fi
 
-echo "curl $SERVICE_URL/v1/chat/completions \\"
-echo "  -H 'Content-Type: application/json' \\"
-echo "  -d '{"
-echo '    "model": "'$API_MODEL_NAME'",'
-echo '    "messages": ['
-echo '      {"role": "system", "content": "You are a digital twin. Respond in the persona's style."},'
-echo '      {"role": "user", "content": "thoughts on learning?"}'
-echo '    ],'
-echo '    "max_tokens": 150,'
-echo '    "temperature": 0.7'
-echo "  }'"
+cat <<CURL_EXAMPLE
+curl $SERVICE_URL/v1/chat/completions \\
+  -H 'Content-Type: application/json' \\
+  -d '{
+    "model": "$API_MODEL_NAME",
+    "messages": [
+      {"role": "system", "content": "You are a digital twin. Respond in the persona style."},
+      {"role": "user", "content": "thoughts on learning?"}
+    ],
+    "max_tokens": 150,
+    "temperature": 0.7
+  }'
+CURL_EXAMPLE
 echo ""
 echo "============================================================"
 echo "IMPORTANT NOTES:"

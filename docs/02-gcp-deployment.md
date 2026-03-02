@@ -11,10 +11,11 @@ Deploy your fine-tuned model to Google Cloud Run with vLLM.
 2. **gcloud CLI** installed
    - [Install guide](https://cloud.google.com/sdk/docs/install)
 
-3. **GPU Quota** (you may need to request this)
-   - Go to: IAM & Admin → Quotas
-   - Search: "NVIDIA L4"
+3. **GPU Quota** (you will need to request this)
+   - Go to: IAM & Admin -> Quotas
+   - Search: "NVIDIA L4" under **Cloud Run Admin API** (not Compute Engine -- they are separate quotas)
    - Request increase for your region
+   - `us-central1` is high demand and may be denied; `us-east4` is a good alternative
 
 ## Step 0: Configure .env
 
@@ -29,7 +30,7 @@ Then edit `.env`. You need to choose a model source — HuggingFace or GCS:
 **Option A: HuggingFace (simpler)**
 ```bash
 GCP_PROJECT_ID="your-gcp-project-id"
-GCP_REGION="us-central1"
+GCP_REGION="us-east4"       # us-east4 has better L4 quota availability
 SERVICE_NAME="your-bot"
 HF_MODEL_ID="username/your-model"   # vLLM pulls directly from HuggingFace
 ```
@@ -37,7 +38,7 @@ HF_MODEL_ID="username/your-model"   # vLLM pulls directly from HuggingFace
 **Option B: GCS bucket (self-hosted)**
 ```bash
 GCP_PROJECT_ID="your-gcp-project-id"
-GCP_REGION="us-central1"
+GCP_REGION="us-east4"
 SERVICE_NAME="your-bot"
 HF_MODEL_ID=""                       # Leave empty to use GCS
 GCS_BUCKET_NAME="your-model-bucket"
@@ -185,11 +186,12 @@ The script detects your model source from `.env` and runs the right `gcloud run 
 
 ```bash
 SERVICE_NAME="your-model-service"
-REGION="us-central1"
+REGION="us-east4"
 HF_MODEL_ID="username/your-model"  # Customize: your HuggingFace model ID
 
-# Google's pre-built vLLM image (Vertex AI)
-VLLM_IMAGE="us-docker.pkg.dev/vertex-ai/vertex-vision-model-garden-dockers/pytorch-vllm-serve:20250312_0916_RC01"
+# Official vLLM Docker Hub image (supports Qwen3 and other recent architectures)
+# Check for latest tags: https://hub.docker.com/r/vllm/vllm-openai/tags
+VLLM_IMAGE="docker.io/vllm/vllm-openai:v0.16.0"
 
 gcloud run deploy $SERVICE_NAME \
     --image $VLLM_IMAGE \
@@ -202,9 +204,11 @@ gcloud run deploy $SERVICE_NAME \
     --max-instances 1 \
     --min-instances 0 \
     --timeout 300 \
+    --cpu-boost \
+    --startup-probe="httpGet.path=/health,httpGet.port=8000,initialDelaySeconds=0,timeoutSeconds=10,periodSeconds=15,failureThreshold=40" \
     --service-account $SA_NAME@$PROJECT_ID.iam.gserviceaccount.com \
     --command python3 \
-    --args="-m,vllm.entrypoints.openai.api_server,--model,$HF_MODEL_ID,--tensor-parallel-size,1,--max-model-len,2048,--trust-remote-code" \
+    --args="-m,vllm.entrypoints.openai.api_server,--model,$HF_MODEL_ID,--tensor-parallel-size,1,--max-model-len,2048,--max-num-seqs,32,--gpu-memory-utilization,0.85,--trust-remote-code" \
     --no-gpu-zonal-redundancy \
     --allow-unauthenticated
 ```
@@ -213,12 +217,11 @@ gcloud run deploy $SERVICE_NAME \
 
 ```bash
 SERVICE_NAME="your-model-service"
-REGION="us-central1"
+REGION="us-east4"
 MODEL_PATH="your-qwen3-8b-merged"  # Customize: must match the directory name in your bucket
 
-# Google's pre-built vLLM image (Vertex AI)
-# Check for latest tags at: https://console.cloud.google.com/artifacts/docker/vertex-ai/us/vertex-vision-model-garden-dockers
-VLLM_IMAGE="us-docker.pkg.dev/vertex-ai/vertex-vision-model-garden-dockers/pytorch-vllm-serve:20250312_0916_RC01"
+# Official vLLM Docker Hub image (supports Qwen3 and other recent architectures)
+VLLM_IMAGE="docker.io/vllm/vllm-openai:v0.16.0"
 
 gcloud run deploy $SERVICE_NAME \
     --image $VLLM_IMAGE \
@@ -231,21 +234,26 @@ gcloud run deploy $SERVICE_NAME \
     --max-instances 1 \
     --min-instances 0 \
     --timeout 300 \
+    --cpu-boost \
+    --startup-probe="httpGet.path=/health,httpGet.port=8000,initialDelaySeconds=0,timeoutSeconds=10,periodSeconds=15,failureThreshold=40" \
     --service-account $SA_NAME@$PROJECT_ID.iam.gserviceaccount.com \
-    --set-env-vars "HF_HUB_OFFLINE=1" \
+    --set-env-vars "MODEL_ID=/model,HF_HUB_OFFLINE=1" \
     --add-volume name=model-volume,type=cloud-storage,bucket=$BUCKET_NAME \
     --add-volume-mount volume=model-volume,mount-path=/model \
     --command python3 \
-    --args="-m,vllm.entrypoints.openai.api_server,--model,/model/$MODEL_PATH,--tensor-parallel-size,1,--max-model-len,2048,--trust-remote-code" \
+    --args="-m,vllm.entrypoints.openai.api_server,--model,/model/$MODEL_PATH,--tensor-parallel-size,1,--max-model-len,2048,--max-num-seqs,32,--gpu-memory-utilization,0.85,--trust-remote-code" \
     --no-gpu-zonal-redundancy \
     --allow-unauthenticated
 ```
 
 ### What this does:
-- Deploys vLLM as a serverless container
+- Deploys vLLM as a serverless container with an NVIDIA L4 GPU
 - **HuggingFace mode:** vLLM downloads the model from HuggingFace at startup
 - **GCS mode:** Mounts your GCS bucket at `/model` and serves from there
 - Starts an OpenAI-compatible API server
+- `--max-num-seqs 32` and `--gpu-memory-utilization 0.85` prevent CUDA OOM on L4 with 8B models
+- `--cpu-boost` gives extra CPU during startup for faster model loading
+- Startup probe gives the container up to 10 minutes to load the model before being killed
 - Scales to 0 when idle (no cost)
 - Allows unauthenticated access (for testing)
 
@@ -342,15 +350,38 @@ gsutil rm -r gs://$BUCKET_NAME
 ## Troubleshooting
 
 ### "Quota exceeded" error
-- Request L4 GPU quota in your region
-- Go to: IAM & Admin → Quotas → Search "NVIDIA L4"
+- Cloud Run GPU quota is **separate** from Compute Engine GPU quota. Having Compute Engine L4 quota does not help.
+- Request quota specifically under **Cloud Run Admin API** in your target region.
+- `us-central1` is high demand and may be denied. `us-east4` is a good alternative.
+- Go to: IAM & Admin -> Quotas -> Filter by "Cloud Run" + "NVIDIA L4"
+
+### Failed revisions blocking GPU quota
+- Failed Cloud Run revisions can consume GPU quota even though they are not running.
+- If you hit quota limits after a failed deploy, delete the entire service and redeploy:
+  ```bash
+  gcloud run services delete $SERVICE_NAME --region $REGION
+  # Then redeploy
+  bash deploy_gcp.sh
+  ```
+
+### "model type 'qwen3' not recognized" error
+- Google's pre-built Vertex AI vLLM image has an old `transformers` version that does not support Qwen3.
+- Use the official Docker Hub image instead: `docker.io/vllm/vllm-openai:v0.16.0` (or newer).
+- The deploy script already uses the correct image.
+
+### CUDA out of memory (OOM)
+- The unquantized bfloat16 8B model is ~16GB, which is tight on an L4 (22GB VRAM).
+- vLLM's default settings (256 max sequences) cause OOM during sampler warmup.
+- Fix: Add `--max-num-seqs 32 --gpu-memory-utilization 0.85` to the vLLM args.
+- If still OOM, reduce `--max-model-len` to 1024.
 
 ### Cold start too slow
 - Set `--min-instances 1` (keeps one warm, costs ~$0.50/hr)
 
-### Out of memory
-- Reduce `--max-model-len` to 1024
-- Or use a smaller quantized model
+### Startup probe timeout
+- If the container is killed before the model finishes loading, increase `failureThreshold` in the startup probe.
+- Each probe attempt is `periodSeconds` apart, so total timeout = `periodSeconds * failureThreshold`.
+- Default in the deploy script: 15s * 40 = 10 minutes.
 
 ### Can't connect from UI
 - Check CORS: The vLLM container should allow all origins
