@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>keen-echo Chat</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .chat-container {
+            width: 100%;
+            max-width: 700px;
+            background: #0f0f1a;
+            border-radius: 20px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+            max-height: 800px;
+        }
+
+        .chat-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px 25px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .avatar {
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+
+        .header-info h1 {
+            color: white;
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+
+        .header-info p {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.85rem;
+        }
+
+        .status {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 0.85rem;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            background: #4ade80;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.loading {
+            background: #fbbf24;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .message {
+            display: flex;
+            gap: 12px;
+            max-width: 85%;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.user {
+            align-self: flex-end;
+            flex-direction: row-reverse;
+        }
+
+        .message-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+
+        .message.assistant .message-avatar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .message.user .message-avatar {
+            background: #374151;
+        }
+
+        .message-content {
+            padding: 14px 18px;
+            border-radius: 18px;
+            line-height: 1.5;
+        }
+
+        .message.assistant .message-content {
+            background: #1e1e2e;
+            color: #e2e8f0;
+            border-bottom-left-radius: 4px;
+        }
+
+        .message.user .message-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .typing-indicator {
+            display: flex;
+            gap: 5px;
+            padding: 14px 18px;
+            background: #1e1e2e;
+            border-radius: 18px;
+            border-bottom-left-radius: 4px;
+            width: fit-content;
+        }
+
+        .typing-indicator span {
+            width: 8px;
+            height: 8px;
+            background: #667eea;
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out;
+        }
+
+        .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+        .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
+            40% { transform: scale(1); opacity: 1; }
+        }
+
+        .chat-input-container {
+            padding: 20px 25px;
+            background: #0a0a12;
+            border-top: 1px solid #1e1e2e;
+        }
+
+        .input-wrapper {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+        }
+
+        .chat-input {
+            flex: 1;
+            background: #1e1e2e;
+            border: 2px solid transparent;
+            border-radius: 25px;
+            padding: 14px 20px;
+            color: #e2e8f0;
+            font-size: 1rem;
+            resize: none;
+            max-height: 120px;
+            transition: border-color 0.2s;
+        }
+
+        .chat-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .chat-input::placeholder {
+            color: #6b7280;
+        }
+
+        .send-button {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s, opacity 0.2s;
+        }
+
+        .send-button:hover {
+            transform: scale(1.05);
+        }
+
+        .send-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .send-button svg {
+            width: 22px;
+            height: 22px;
+            fill: white;
+        }
+
+        .settings-bar {
+            padding: 10px 25px;
+            background: #0a0a12;
+            border-bottom: 1px solid #1e1e2e;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .settings-bar label {
+            color: #9ca3af;
+            font-size: 0.85rem;
+        }
+
+        .settings-bar input {
+            background: #1e1e2e;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            padding: 6px 12px;
+            color: #e2e8f0;
+            font-size: 0.85rem;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .settings-bar input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .error-message {
+            background: #7f1d1d;
+            color: #fecaca;
+            padding: 12px 18px;
+            border-radius: 12px;
+            margin: 10px 25px;
+            font-size: 0.9rem;
+        }
+
+        .welcome-message {
+            text-align: center;
+            color: #6b7280;
+            padding: 40px;
+        }
+
+        .welcome-message h2 {
+            color: #e2e8f0;
+            margin-bottom: 10px;
+            font-size: 1.5rem;
+        }
+
+        .welcome-message p {
+            margin-bottom: 20px;
+        }
+
+        .example-prompts {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .example-prompt {
+            background: #1e1e2e;
+            border: 1px solid #374151;
+            border-radius: 20px;
+            padding: 10px 16px;
+            color: #9ca3af;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .example-prompt:hover {
+            background: #2d2d3d;
+            color: #e2e8f0;
+            border-color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <div class="avatar">🧠</div>
+            <div class="header-info">
+                <h1>keen-echo</h1>
+                <p>digital twin chat ☯️</p>
+            </div>
+            <div class="status">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">Ready</span>
+            </div>
+        </div>
+
+        <div class="settings-bar">
+            <label>API Endpoint:</label>
+            <input type="text" id="apiEndpoint" placeholder="https://your-service-url.run.app" />
+        </div>
+
+        <div class="chat-messages" id="chatMessages">
+            <div class="welcome-message">
+                <h2>welcome ☯️</h2>
+                <p>ask anything - thoughts, philosophy, tech ideas, whatever</p>
+                <div class="example-prompts">
+                    <div class="example-prompt" onclick="sendExample(this)">thoughts on learning?</div>
+                    <div class="example-prompt" onclick="sendExample(this)">what do you think about balance in life?</div>
+                    <div class="example-prompt" onclick="sendExample(this)">react to discovering something mind-blowing</div>
+                    <div class="example-prompt" onclick="sendExample(this)">what have you been thinking about lately?</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="errorContainer"></div>
+
+        <div class="chat-input-container">
+            <div class="input-wrapper">
+                <textarea 
+                    class="chat-input" 
+                    id="chatInput" 
+                    placeholder="say something..." 
+                    rows="1"
+                    onkeydown="handleKeyDown(event)"
+                ></textarea>
+                <button class="send-button" id="sendButton" onclick="sendMessage()">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================
+        // CONFIGURATION — Edit these for your persona
+        // ============================================================
+
+        // Set your model name here (must match the model served by vLLM/Ollama)
+        const MODEL_NAME = 'my-model-merged';
+
+        // Customize this system prompt to match your persona
+        const SYSTEM_PROMPT = `You are a digital twin. You write in a unique personal style.
+
+Customize this prompt to describe your target persona's writing patterns:
+- tone and formality level
+- punctuation and capitalization habits
+- common expressions, filler words, slang
+- emoji usage
+- topics and themes they gravitate toward
+
+Respond authentically in that persona's voice.`;
+
+        let conversationHistory = [];
+        let isLoading = false;
+
+        // ============================================================
+        // UI FUNCTIONS
+        // ============================================================
+
+        function setStatus(status, isLoading = false) {
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            
+            dot.className = 'status-dot' + (isLoading ? ' loading' : '');
+            text.textContent = status;
+        }
+
+        function addMessage(role, content) {
+            const container = document.getElementById('chatMessages');
+            
+            // Remove welcome message if present
+            const welcome = container.querySelector('.welcome-message');
+            if (welcome) welcome.remove();
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+            
+            const avatar = role === 'assistant' ? '🧠' : '👤';
+            
+            messageDiv.innerHTML = `
+                <div class="message-avatar">${avatar}</div>
+                <div class="message-content">${escapeHtml(content)}</div>
+            `;
+            
+            container.appendChild(messageDiv);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function addTypingIndicator() {
+            const container = document.getElementById('chatMessages');
+            
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'message assistant';
+            typingDiv.id = 'typingIndicator';
+            
+            typingDiv.innerHTML = `
+                <div class="message-avatar">🧠</div>
+                <div class="typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            `;
+            
+            container.appendChild(typingDiv);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function removeTypingIndicator() {
+            const indicator = document.getElementById('typingIndicator');
+            if (indicator) indicator.remove();
+        }
+
+        function showError(message) {
+            const container = document.getElementById('errorContainer');
+            container.innerHTML = `<div class="error-message">${escapeHtml(message)}</div>`;
+            
+            setTimeout(() => {
+                container.innerHTML = '';
+            }, 5000);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // ============================================================
+        // API FUNCTIONS
+        // ============================================================
+
+        async function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const endpoint = document.getElementById('apiEndpoint').value.trim();
+            const message = input.value.trim();
+
+            if (!message || isLoading) return;
+
+            if (!endpoint) {
+                showError('Please enter your API endpoint URL first');
+                return;
+            }
+
+            // Add user message to UI and history
+            addMessage('user', message);
+            conversationHistory.push({ role: 'user', content: message });
+            
+            input.value = '';
+            input.style.height = 'auto';
+            
+            isLoading = true;
+            setStatus('Thinking...', true);
+            document.getElementById('sendButton').disabled = true;
+            addTypingIndicator();
+
+            try {
+                const response = await fetch(`${endpoint}/v1/chat/completions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        model: MODEL_NAME,
+                        messages: [
+                            { role: 'system', content: SYSTEM_PROMPT },
+                            ...conversationHistory
+                        ],
+                        max_tokens: 200,
+                        temperature: 0.7,
+                        top_p: 0.9,
+                    }),
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status} ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                const assistantMessage = data.choices[0].message.content;
+
+                removeTypingIndicator();
+                addMessage('assistant', assistantMessage);
+                conversationHistory.push({ role: 'assistant', content: assistantMessage });
+
+            } catch (error) {
+                removeTypingIndicator();
+                console.error('Error:', error);
+                
+                if (error.message.includes('Failed to fetch')) {
+                    showError('Could not connect to API. The service might be cold starting (30-60 sec). Try again in a moment.');
+                } else {
+                    showError(`Error: ${error.message}`);
+                }
+            } finally {
+                isLoading = false;
+                setStatus('Ready');
+                document.getElementById('sendButton').disabled = false;
+            }
+        }
+
+        // ============================================================
+        // EVENT HANDLERS
+        // ============================================================
+
+        function handleKeyDown(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+
+        function sendExample(element) {
+            const input = document.getElementById('chatInput');
+            input.value = element.textContent;
+            sendMessage();
+        }
+
+        // Auto-resize textarea
+        document.getElementById('chatInput').addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+        });
+
+        // Load saved endpoint
+        const savedEndpoint = localStorage.getItem('keenEchoApiEndpoint');
+        if (savedEndpoint) {
+            document.getElementById('apiEndpoint').value = savedEndpoint;
+        }
+
+        // Save endpoint on change
+        document.getElementById('apiEndpoint').addEventListener('change', function() {
+            localStorage.setItem('keenEchoApiEndpoint', this.value);
+        });
+    </script>
+</body>
+</html>
